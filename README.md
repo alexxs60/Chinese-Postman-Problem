@@ -41,8 +41,8 @@ ChinesePostmanProblem/
 快速开始
 
 ## 环境要求
--Windows / macOS / Linux
--编译器：支持 C++11（推荐 g++ 9+ / Visual Studio 2022 / MinGW）
+- Windows / macOS / Linux
+- 编译器：支持 C++11（推荐 g++ 9+ / Visual Studio 2022 / MinGW）
 编译与运行
 使用终端或 IDE 打开项目文件夹
 编译运行 main.cpp
