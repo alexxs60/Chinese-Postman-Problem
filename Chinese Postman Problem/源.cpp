@@ -4,7 +4,6 @@
 #include <climits>
 #include <algorithm>
 #include <fstream>
-#include <chrono>
 #include <set>
 
 using namespace std;
@@ -15,22 +14,29 @@ const int INF = INT_MAX / 2;
 vector<vector<int>> adjMatrix(MAX_NODES, vector<int>(MAX_NODES, INF));
 vector<vector<int>> parent(MAX_NODES, vector<int>(MAX_NODES, -1));
 vector<int> nodeDegrees(MAX_NODES, 0);
-vector<multiset<int>> multigraph(MAX_NODES);
+vector<vector<pair<int, int>>> multigraph(MAX_NODES);
 
 int nodes, edges, startNode;
 long long originalLength = 0;
-int added_edge_count = 0;
 
 void readGraphFromKeyboard() {
     cout << "请输入节点数、边数和起始节点：";
     cin >> nodes >> edges >> startNode;
+    if (nodes <= 0 || edges < 0 || startNode < 0 || startNode >= nodes) {
+        cout << "输入无效！" << endl;
+        exit(1);
+    }
     for (int i = 0; i < edges; i++) {
         int from, to, weight;
         cout << "请输入边 " << i + 1 << " 的两个节点和权重：";
         cin >> from >> to >> weight;
+        if (from < 0 || from >= nodes || to < 0 || to >= nodes || weight <= 0) {
+            cout << "边输入无效！" << endl;
+            exit(1);
+        }
         adjMatrix[from][to] = adjMatrix[to][from] = min(adjMatrix[from][to], weight);
-        multigraph[from].insert(to);
-        multigraph[to].insert(from);
+        multigraph[from].push_back({ to, weight });
+        multigraph[to].push_back({ from, weight });
         nodeDegrees[from]++;
         nodeDegrees[to]++;
         originalLength += weight;
@@ -44,12 +50,20 @@ void readGraphFromFile(const string& filename) {
         exit(1);
     }
     file >> nodes >> edges >> startNode;
+    if (nodes <= 0 || edges < 0 || startNode < 0 || startNode >= nodes) {
+        cout << "文件输入无效！" << endl;
+        exit(1);
+    }
     for (int i = 0; i < edges; i++) {
         int from, to, weight;
         file >> from >> to >> weight;
+        if (from < 0 || from >= nodes || to < 0 || to >= nodes || weight <= 0) {
+            cout << "边输入无效！" << endl;
+            exit(1);
+        }
         adjMatrix[from][to] = adjMatrix[to][from] = min(adjMatrix[from][to], weight);
-        multigraph[from].insert(to);
-        multigraph[to].insert(from);
+        multigraph[from].push_back({ to, weight });
+        multigraph[to].push_back({ from, weight });
         nodeDegrees[from]++;
         nodeDegrees[to]++;
         originalLength += weight;
@@ -67,8 +81,12 @@ void chooseInputMethod() {
         cin >> filename;
         readGraphFromFile(filename);
     }
-    else {
+    else if (choice == 2) {
         readGraphFromKeyboard();
+    }
+    else {
+        cout << "选择无效！" << endl;
+        exit(1);
     }
 }
 
@@ -78,6 +96,11 @@ void printGraph() {
 }
 
 void floydWarshall() {
+    // 初始化对角线为0
+    for (int i = 0; i < nodes; i++) {
+        adjMatrix[i][i] = 0;
+        parent[i][i] = i;
+    }
     for (int i = 0; i < nodes; i++) {
         for (int j = 0; j < nodes; j++) {
             if (adjMatrix[i][j] < INF) parent[i][j] = j;
@@ -95,7 +118,11 @@ void floydWarshall() {
 
 vector<int> getShortestPath(int u, int v) {
     vector<int> path;
-    if (parent[u][v] == -1 && u != v) return path;
+    if (u == v) {
+        path.push_back(u);
+        return path;
+    }
+    if (parent[u][v] == -1) return path;
     int cur = u;
     while (cur != v) {
         path.push_back(cur);
@@ -113,9 +140,9 @@ vector<int> getOddDegreeNodes() {
     return odds;
 }
 
-void dfsMatch(int idx, const vector<int>& odds, const vector<vector<int> >& dist,
-    vector<bool>& used, long long cur_cost, vector<pair<int, int> >& cur_pairs,
-    long long& min_cost, vector<pair<int, int> >& best_pairs) {
+void dfsMatch(int idx, const vector<int>& odds, const vector<vector<int>>& dist,
+    vector<bool>& used, long long cur_cost, vector<pair<int, int>>& cur_pairs,
+    long long& min_cost, vector<pair<int, int>>& best_pairs) {
     if (idx == (int)odds.size()) {
         if (cur_cost < min_cost) {
             min_cost = cur_cost;
@@ -138,31 +165,28 @@ void dfsMatch(int idx, const vector<int>& odds, const vector<vector<int> >& dist
     }
 }
 
-long long minimumMatching(const vector<int>& odds, vector<pair<int, int> >& best_pairs) {
+long long minimumMatching(const vector<int>& odds, vector<pair<int, int>>& best_pairs) {
     int n = odds.size();
     if (n == 0) return 0;
     if (n % 2 != 0) return -1;
 
-    vector<vector<int> > dist = adjMatrix;  // 复制一份
+    vector<vector<int>> dist = adjMatrix;  // 复制一份
     long long min_cost = LLONG_MAX / 2;
     vector<bool> used(n, false);
-    vector<pair<int, int> > cur_pairs;
+    vector<pair<int, int>> cur_pairs;
     dfsMatch(0, odds, dist, used, 0LL, cur_pairs, min_cost, best_pairs);
     return (min_cost >= INF) ? -1LL : min_cost;
 }
 
-void addDuplicateEdges(const vector<pair<int, int> >& pairs) {
-    added_edge_count = 0;
-    for (vector<pair<int, int> >::const_iterator it = pairs.begin(); it != pairs.end(); ++it) {
-        int u = it->first;
-        int v = it->second;
+void addDuplicateEdges(const vector<pair<int, int>>& pairs) {
+    for (auto& p : pairs) {
+        int u = p.first, v = p.second;
         vector<int> path = getShortestPath(u, v);
         if (path.empty()) continue;
-        for (size_t i = 0; i + 1 < path.size(); ++i) {
+        for (size_t i = 02; i + 1 < path.size(); ++i) {
             int a = path[i], b = path[i + 1];
-            multigraph[a].insert(b);
-            multigraph[b].insert(a);
-            added_edge_count++;
+            multigraph[a].push_back({ b, adjMatrix[a][b] });
+            multigraph[b].push_back({ a, adjMatrix[a][b] });
         }
     }
 }
@@ -179,10 +203,18 @@ vector<int> findEulerCircuit(int start) {
             stk.pop();
         }
         else {
-            multiset<int>::iterator it = multigraph[u].begin();
-            int v = *it;
-            multigraph[u].erase(it);
-            multigraph[v].erase(multigraph[v].find(u));
+            auto& edges = multigraph[u];
+            auto it = edges.begin();
+            int v = it->first;
+            edges.erase(it);
+            // 移除反向边
+            auto& rev_edges = multigraph[v];
+            for (auto jt = rev_edges.begin(); jt != rev_edges.end(); ++jt) {
+                if (jt->first == u) {
+                    rev_edges.erase(jt);
+                    break;
+                }
+            }
             stk.push(v);
         }
     }
@@ -190,14 +222,30 @@ vector<int> findEulerCircuit(int start) {
     return circuit;
 }
 
+bool isGraphConnected() {
+    // 从startNode出发检查所有节点可达
+    for (int i = 0; i < nodes; i++) {
+        if (adjMatrix[startNode][i] >= INF) return false;
+    }
+    return true;
+}
+
 void calculateAndPrintOptimalRoute() {
     floydWarshall();
 
+    if (!isGraphConnected()) {
+        cout << "图不连通，无法计算！" << endl;
+        return;
+    }
+
     vector<int> odds = getOddDegreeNodes();
     long long added_cost = 0;
-    vector<pair<int, int> > pairs;
+    vector<pair<int, int>> pairs;
 
     if (!odds.empty()) {
+        if (odds.size() > 10) {
+            cout << "奇节点太多，匹配可能慢！" << endl;
+        }
         added_cost = minimumMatching(odds, pairs);
         if (added_cost < 0) {
             cout << "匹配失败！" << endl;
@@ -209,9 +257,17 @@ void calculateAndPrintOptimalRoute() {
 
     vector<int> euler = findEulerCircuit(startNode);
 
-    int total_edges = edges + added_edge_count;
-    if (static_cast<int>(euler.size()) != total_edges + 1) {
-        cout << "警告：路径可能不完整 (节点数 " << euler.size() << ", 预期 " << total_edges + 1 << ")" << endl;
+    // 计算实际路径长度
+    long long total_length = 0;
+    for (size_t i = 0; i + 1 < euler.size(); ++i) {
+        int u = euler[i], v = euler[i + 1];
+        if (adjMatrix[u][v] < INF) {
+            total_length += adjMatrix[u][v];
+        }
+        else {
+            cout << "路径错误，无法计算长度！" << endl;
+            return;
+        }
     }
 
     cout << "路线: ";
@@ -220,7 +276,7 @@ void calculateAndPrintOptimalRoute() {
         if (i + 1 < euler.size()) cout << " -> ";
     }
     cout << endl;
-    cout << "总路程: " << originalLength + added_cost << endl;
+    cout << "总路程: " << total_length << endl;
 }
 
 int main() {
